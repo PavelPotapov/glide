@@ -384,6 +384,8 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         disabledRows,
         rowHeight,
         verticalBorder,
+        horizontalBorder,
+        getCellBorder,
         hiddenColumnsIndicator,
         overrideCursor,
         isResizing,
@@ -865,7 +867,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     rows,
                     theme,
                     false,
-                    enableLowDprHairline
+                    enableLowDprHairline,
+                    horizontalBorder,
+                    getCellBorder
                 );
 
                 overdrawStickyBoundaries(

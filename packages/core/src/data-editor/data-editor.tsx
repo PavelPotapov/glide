@@ -33,6 +33,8 @@ import {
     type EditListItem,
     type CellActivationBehavior,
     type SpanAlignment,
+    type CellBorderResolver,
+    type CellBorders,
 } from "../internal/data-grid/data-grid-types.js";
 import DataGridSearch, { type DataGridSearchProps } from "../internal/data-grid-search/data-grid-search.js";
 import { browserIsOSX } from "../common/browser-detect.js";
@@ -164,6 +166,8 @@ type Props = Partial<
         | "translateX"
         | "translateY"
         | "verticalBorder"
+        | "horizontalBorder"
+        | "getCellBorder"
     >
 >;
 
@@ -663,6 +667,22 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
     readonly verticalBorder?: DataGridSearchProps["verticalBorder"] | boolean;
 
     /**
+     * Управление горизонтальной линией сверху строки. Функция `(row) => boolean` — точечно
+     * по строкам, boolean — сразу для всех строк тела. Не задано — линии рисуются (как раньше).
+     * @defaultValue `true`
+     * @group Style
+     */
+    readonly horizontalBorder?: ((row: number) => boolean) | boolean;
+
+    /**
+     * Пер-ячейковое переопределение рамок (стороны top/right/bottom/left, вкл/выкл и цвет).
+     * Перекрывает `verticalBorder`/`horizontalBorder` и тему. Не задано — быстрый путь без
+     * посегментной отрисовки. row/col — в пользательских индексах (без служебных колонок).
+     * @group Style
+     */
+    readonly getCellBorder?: CellBorderResolver;
+
+    /**
      * Controls the grouping of rows to be drawn in the grid.
      */
     readonly rowGrouping?: RowGroupingOptions;
@@ -919,6 +939,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         scrollOffsetX,
         scrollOffsetY,
         verticalBorder,
+        horizontalBorder,
+        getCellBorder,
         onDragOverCell,
         onDrop,
         onColumnResize: onColumnResizeIn,
@@ -4345,6 +4367,28 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         [rowMarkerOffset, verticalBorder]
     );
 
+    // Горизонтальные линии по строкам. row в тело-индексах (без служебных колонок его
+    // не сдвигаем — это индекс строки). boolean применяем ко всем строкам.
+    const mangledHorizontalBorder = React.useMemo(() => {
+        if (horizontalBorder === undefined) return undefined;
+        if (typeof horizontalBorder === "boolean") {
+            const value = horizontalBorder;
+            return () => value;
+        }
+        return horizontalBorder;
+    }, [horizontalBorder]);
+
+    // Пер-ячейковые рамки: сдвигаем col на служебные колонки (rowMarker/checkbox). В
+    // служебных колонках (col < rowMarkerOffset) переопределений нет.
+    const mangledGetCellBorder = React.useMemo<CellBorderResolver | undefined>(() => {
+        if (getCellBorder === undefined) return undefined;
+        return (col: number, row: number): CellBorders | undefined => {
+            const userCol = col - rowMarkerOffset;
+            if (userCol < 0) return undefined;
+            return getCellBorder(userCol, row);
+        };
+    }, [getCellBorder, rowMarkerOffset]);
+
     // Индикатор скрытых колонок: переводим границы из пользовательских индексов во
     // внутренние (со сдвигом на служебную rowMarker-колонку). На границах служебной
     // зоны (col <= rowMarkerOffset слева) индикатор не рисуем.
@@ -4695,6 +4739,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                     translateX={visibleRegion.tx}
                     translateY={visibleRegion.ty}
                     verticalBorder={mangledVerticalBorder}
+                    horizontalBorder={mangledHorizontalBorder}
+                    getCellBorder={mangledGetCellBorder}
                     hiddenColumnsIndicator={mangledHiddenColumnsIndicator}
                     gridRef={gridRef}
                     getCellRenderer={getCellRenderer}
