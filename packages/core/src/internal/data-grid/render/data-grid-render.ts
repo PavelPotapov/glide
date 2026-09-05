@@ -1236,7 +1236,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         rows,
         theme,
         false,
-        enableLowDprHairline
+        enableLowDprHairline,
+        horizontalBorder,
+        getCellBorder
     );
 
     highlightRedraw?.();
