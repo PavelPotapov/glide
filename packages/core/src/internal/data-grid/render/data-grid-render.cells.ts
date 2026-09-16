@@ -203,11 +203,16 @@ export function pushSpanSelectionStrips(
 export function computeSpanRowBgFills(
     geom: SpanBlockGeometry,
     getRowThemeOverride: GetRowThemeCallback | undefined,
-    cellForcesBg: boolean
+    cellForcesBg: boolean,
+    suppressRow?: number
 ): SpanPartialFill[] | undefined {
     if (getRowThemeOverride === undefined || cellForcesBg) return undefined;
     let fills: SpanPartialFill[] | undefined;
     for (let r = geom.rows[0]; r <= geom.rows[1]; r++) {
+        // suppressRow — наведённая строка при полностью выделенном блоке: выделение
+        // лежит в базовой заливке (нижний слой), и транзиентная hover-полоса светлила
+        // бы его. Без полного выделения hover-полоса рисуется как обычно.
+        if (r === suppressRow) continue;
         const rBg = getRowThemeOverride(r)?.bgCell;
         if (rBg === undefined) continue;
         const strip = spanPartialFillRect({ c0: geom.cols[0], c1: geom.cols[1], r0: r, r1: r, full: false }, geom, rBg);
@@ -548,9 +553,29 @@ export function drawCells(
                     // Если ячейка сама форсит bgCell (напр. редактируемая: bgEditableCell),
                     // он по mergeAndRealizeTheme перебивает row-override — как у обычных ячеек.
                     const cellForcesBg = cell.themeOverride?.bgCell !== undefined;
+                    // Блок целиком залит выделением в базовом fill (полный range даёт
+                    // accentCount, полный highlight-регион блендится ниже): hover-полосу
+                    // наведённой строки гасим, иначе она светлит выделенный блок. Частичное
+                    // выделение рисуется полосами ПОВЕРХ hover-полос, его не подавляем.
+                    const spanFullySelected =
+                        spanGeom !== undefined &&
+                        (accentCount > 0 ||
+                            (highlightRegions !== undefined &&
+                                highlightRegions.some(
+                                    region =>
+                                        region.style !== "solid-outline" &&
+                                        spanGeom !== undefined &&
+                                        intersectRangeWithSpan(region.range, spanGeom.cols, spanGeom.rows)
+                                            ?.full === true
+                                )));
                     const spanRowBgFills =
                         spanGeom !== undefined
-                            ? computeSpanRowBgFills(spanGeom, getRowThemeOverride, cellForcesBg)
+                            ? computeSpanRowBgFills(
+                                  spanGeom,
+                                  getRowThemeOverride,
+                                  cellForcesBg,
+                                  spanFullySelected ? hoverInfo?.[0]?.[1] : undefined
+                              )
                             : undefined;
 
                     const bgTheme = drawingSpan ? themeNoRow : theme;
