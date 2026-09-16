@@ -203,16 +203,11 @@ export function pushSpanSelectionStrips(
 export function computeSpanRowBgFills(
     geom: SpanBlockGeometry,
     getRowThemeOverride: GetRowThemeCallback | undefined,
-    cellForcesBg: boolean,
-    suppressRow?: number
+    cellForcesBg: boolean
 ): SpanPartialFill[] | undefined {
     if (getRowThemeOverride === undefined || cellForcesBg) return undefined;
     let fills: SpanPartialFill[] | undefined;
     for (let r = geom.rows[0]; r <= geom.rows[1]; r++) {
-        // suppressRow — наведённая строка при полностью выделенном блоке: выделение
-        // лежит в базовой заливке (нижний слой), и транзиентная hover-полоса светлила
-        // бы его. Без полного выделения hover-полоса рисуется как обычно.
-        if (r === suppressRow) continue;
         const rBg = getRowThemeOverride(r)?.bgCell;
         if (rBg === undefined) continue;
         const strip = spanPartialFillRect({ c0: geom.cols[0], c1: geom.cols[1], r0: r, r1: r, full: false }, geom, rBg);
@@ -553,29 +548,9 @@ export function drawCells(
                     // Если ячейка сама форсит bgCell (напр. редактируемая: bgEditableCell),
                     // он по mergeAndRealizeTheme перебивает row-override — как у обычных ячеек.
                     const cellForcesBg = cell.themeOverride?.bgCell !== undefined;
-                    // Блок целиком залит выделением в базовом fill (полный range даёт
-                    // accentCount, полный highlight-регион блендится ниже): hover-полосу
-                    // наведённой строки гасим, иначе она светлит выделенный блок. Частичное
-                    // выделение рисуется полосами ПОВЕРХ hover-полос, его не подавляем.
-                    const spanFullySelected =
-                        spanGeom !== undefined &&
-                        (accentCount > 0 ||
-                            (highlightRegions !== undefined &&
-                                highlightRegions.some(
-                                    region =>
-                                        region.style !== "solid-outline" &&
-                                        spanGeom !== undefined &&
-                                        intersectRangeWithSpan(region.range, spanGeom.cols, spanGeom.rows)
-                                            ?.full === true
-                                )));
                     const spanRowBgFills =
                         spanGeom !== undefined
-                            ? computeSpanRowBgFills(
-                                  spanGeom,
-                                  getRowThemeOverride,
-                                  cellForcesBg,
-                                  spanFullySelected ? hoverInfo?.[0]?.[1] : undefined
-                              )
+                            ? computeSpanRowBgFills(spanGeom, getRowThemeOverride, cellForcesBg)
                             : undefined;
 
                     const bgTheme = drawingSpan ? themeNoRow : theme;
@@ -590,7 +565,30 @@ export function drawCells(
                             fill = blend(theme.bgHeader, fill);
                         }
                         for (let i = 0; i < accentCount; i++) {
-                            fill = blend(theme.accentLight, fill);
+                            if (drawingSpan && spanGeom !== undefined) {
+                                // Слитый блок: accent полного выделения кладём полосой ПОВЕРХ
+                                // строковых полос (hover и checkbox из getRowThemeOverride), а не
+                                // blend в базовую заливку. Порядок как у обычных ячеек: hover
+                                // внизу, выделение сверху. Иначе транзиентная hover-полоса
+                                // светлила выделенный блок (и мигала на гонке кадров).
+                                const strip = spanPartialFillRect(
+                                    {
+                                        c0: spanGeom.cols[0],
+                                        c1: spanGeom.cols[1],
+                                        r0: spanGeom.rows[0],
+                                        r1: spanGeom.rows[1],
+                                        full: true,
+                                    },
+                                    spanGeom,
+                                    theme.accentLight
+                                );
+                                if (strip !== null) {
+                                    if (spanPartialFills === undefined) spanPartialFills = [];
+                                    spanPartialFills.push(strip);
+                                }
+                            } else {
+                                fill = blend(theme.accentLight, fill);
+                            }
                         }
                     } else if (prelightCells !== undefined) {
                         for (const pre of prelightCells) {
@@ -617,18 +615,15 @@ export function drawCells(
                         }
                     }
 
-                    // Слитый блок: fill-регион красит только своё пересечение с блоком;
-                    // полный охват идёт обычным blend всей заливки.
+                    // Слитый блок: highlight-регион красит своё пересечение с блоком полосой.
+                    // Полный охват - тоже полосой (поверх строковых полос hover/checkbox),
+                    // чтобы порядок слоёв совпадал с обычными ячейками: выделение сверху.
                     if (highlightRegions !== undefined && spanGeom !== undefined) {
                         for (let i = 0; i < highlightRegions.length; i++) {
                             const region = highlightRegions[i];
                             if (region.style === "solid-outline") continue;
                             const hit = intersectRangeWithSpan(region.range, spanGeom.cols, spanGeom.rows);
                             if (hit === null) continue;
-                            if (hit.full) {
-                                fill = blend(region.color, fill);
-                                continue;
-                            }
                             const strip = spanPartialFillRect(hit, spanGeom, region.color);
                             if (strip !== null) {
                                 if (spanPartialFills === undefined) spanPartialFills = [];
