@@ -848,6 +848,23 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                 const lineRepairRegions =
                     spans === undefined ? visualDamageRegions : [...visualDamageRegions, ...spans];
 
+                // Sticky-разделитель рисуем ДО линий сетки — как в полном рендере.
+                // Иначе на damage-перерисовке (ховер) он ложился поверх пер-ячейковых
+                // рамок getCellBorder на границе закреплённых колонок, и рамка мигала
+                // (серый разделитель перекрывал цвет рамки при каждом ховере).
+                overdrawStickyBoundaries(
+                    ctx,
+                    effectiveCols,
+                    width,
+                    height,
+                    freezeTrailingRows,
+                    rows,
+                    verticalBorder,
+                    getRowHeight,
+                    theme,
+                    enableLowDprHairline
+                );
+
                 drawGridLines(
                     ctx,
                     effectiveCols,
@@ -870,19 +887,6 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
                     enableLowDprHairline,
                     horizontalBorder,
                     getCellBorder
-                );
-
-                overdrawStickyBoundaries(
-                    ctx,
-                    effectiveCols,
-                    width,
-                    height,
-                    freezeTrailingRows,
-                    rows,
-                    verticalBorder,
-                    getRowHeight,
-                    theme,
-                    enableLowDprHairline
                 );
 
                 highlightRedraw?.();
@@ -1070,6 +1074,19 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         );
     }
 
+    // При скролле (drawRegions от блита) с пер-ячейковыми рамками sticky-разделитель
+    // рисуем только в новых полосах: остальная канва скопирована блитом вместе с
+    // цветными сегментами рамок, и перерисовка серым на всю высоту их затирала
+    // (дальше весь рендер идёт под клипом по drawRegions и восстановить их не может).
+    const clipStickyToRegions = getCellBorder !== undefined && drawRegions.length > 0;
+    if (clipStickyToRegions) {
+        targetCtx.save();
+        targetCtx.beginPath();
+        for (const r of drawRegions) {
+            targetCtx.rect(r.x, r.y, r.width, r.height);
+        }
+        targetCtx.clip();
+    }
     overdrawStickyBoundaries(
         targetCtx,
         effectiveCols,
@@ -1082,6 +1099,9 @@ export function drawGrid(arg: DrawGridArg, lastArg: DrawGridArg | undefined) {
         theme,
         enableLowDprHairline
     );
+    if (clipStickyToRegions) {
+        targetCtx.restore();
+    }
 
     const highlightRedraw = drawHighlightRings(
         targetCtx,
