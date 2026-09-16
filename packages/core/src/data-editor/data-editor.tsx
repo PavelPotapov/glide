@@ -3107,7 +3107,14 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
                 }
             }
 
-            onItemHovered?.({ ...args, location: [args.location[0] - rowMarkerOffset, args.location[1]] as any });
+            onItemHovered?.({
+                ...args,
+                location: [args.location[0] - rowMarkerOffset, args.location[1]] as any,
+                // rawLocation сдвигаем на служебные колонки так же, как location.
+                ...(args.kind === "cell" && args.rawLocation !== undefined
+                    ? { rawLocation: [args.rawLocation[0] - rowMarkerOffset, args.rawLocation[1]] as any }
+                    : undefined),
+            });
         },
         [
             mouseState,

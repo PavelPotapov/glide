@@ -859,6 +859,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 result = {
                     kind: "cell",
                     location: [cellCol, cellRow],
+                    rawLocation: [col, row],
                     bounds: bounds,
                     isEdge,
                     shiftKey,
