@@ -213,9 +213,9 @@ export interface DataGridProps {
     readonly onKeyUp: ((event: GridKeyEventArgs) => void) | undefined;
 
     readonly verticalBorder: (col: number) => boolean;
-    /** Рисовать ли горизонтальную линию сверху строки row. Не задано — рисуем (как раньше). */
+    /** Рисовать ли горизонтальную линию сверху строки row. Если не задано, линия рисуется как раньше. */
     readonly horizontalBorder?: (row: number) => boolean;
-    /** Пер-ячейковое переопределение рамок. Не задано — быстрый путь без сегментации. */
+    /** Рамки отдельных ячеек. Если не задано, линии рисуются сплошными без разбивки по ячейкам. */
     readonly getCellBorder?: CellBorderResolver;
 
     /**

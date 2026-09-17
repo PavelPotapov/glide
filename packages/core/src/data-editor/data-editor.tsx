@@ -675,9 +675,10 @@ export interface DataEditorProps extends Props, Pick<DataGridSearchProps, "image
     readonly horizontalBorder?: ((row: number) => boolean) | boolean;
 
     /**
-     * Пер-ячейковое переопределение рамок (стороны top/right/bottom/left, вкл/выкл и цвет).
-     * Перекрывает `verticalBorder`/`horizontalBorder` и тему. Не задано — быстрый путь без
-     * посегментной отрисовки. row/col — в пользательских индексах (без служебных колонок).
+     * Настройка рамок отдельных ячеек: стороны top, right, bottom, left,
+     * вкл/выкл и цвет. Перекрывает `verticalBorder`, `horizontalBorder` и тему.
+     * Если не задано, линии рисуются сплошными без разбивки по ячейкам.
+     * row и col приходят в пользовательских индексах, без служебных колонок.
      * @group Style
      */
     readonly getCellBorder?: CellBorderResolver;
@@ -4385,8 +4386,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         return horizontalBorder;
     }, [horizontalBorder]);
 
-    // Пер-ячейковые рамки: сдвигаем col на служебные колонки (rowMarker/checkbox). В
-    // служебных колонках (col < rowMarkerOffset) переопределений нет.
+    // Рамки отдельных ячеек: сдвигаем col на служебные колонки (нумерация, чекбокс).
+    // В служебных колонках (col < rowMarkerOffset) переопределений нет.
     const mangledGetCellBorder = React.useMemo<CellBorderResolver | undefined>(() => {
         if (getCellBorder === undefined) return undefined;
         return (col: number, row: number): CellBorders | undefined => {

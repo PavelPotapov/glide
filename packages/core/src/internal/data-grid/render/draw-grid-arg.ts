@@ -51,9 +51,9 @@ export interface DrawGridArg {
     readonly disabledRows: CompactSelection;
     readonly rowHeight: number | ((index: number) => number);
     readonly verticalBorder: (col: number) => boolean;
-    /** Рисовать ли горизонтальную линию сверху строки row. Не задано — рисуем. */
+    /** Рисовать ли горизонтальную линию сверху строки row. Если не задано, линия рисуется. */
     readonly horizontalBorder?: (row: number) => boolean;
-    /** Пер-ячейковое переопределение рамок. Не задано — быстрый путь без сегментации. */
+    /** Рамки отдельных ячеек. Если не задано, линии рисуются сплошными без разбивки по ячейкам. */
     readonly getCellBorder?: CellBorderResolver;
     /** Индикатор скрытых колонок: сколько колонок скрыто на левой границе колонки col. */
     readonly hiddenColumnsIndicator?: (col: number) => number | HiddenColumnsIndicatorInfo;
