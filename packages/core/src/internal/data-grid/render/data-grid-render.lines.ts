@@ -294,8 +294,8 @@ interface ResolvedBorder {
     color: string;
 }
 
-// Приводит спецификацию стороны рамки к «рисовать/цвет». undefined — сторона не задана,
-// действует поведение по умолчанию (колонка/строка/тема).
+// Решает, рисовать ли одну сторону рамки и каким цветом. Если сторона не задана
+// (undefined), берётся значение по умолчанию (от колонки, строки или темы).
 function resolveBorderSide(
     spec: BorderSideSpec | undefined,
     defaultVisible: boolean,
@@ -307,12 +307,19 @@ function resolveBorderSide(
     return { visible: true, color: spec.color ?? defaultColor };
 }
 
-// Общая физическая линия делится двумя ячейками. Приоритет у «ранней» ячейки: для
-// вертикали — правая сторона левой ячейки, для горизонтали — нижняя сторона верхней.
+// Одну и ту же линию делят две соседние ячейки. Побеждает настройка «ранней»
+// ячейки: для вертикальной линии это правая сторона левой ячейки, для
+// горизонтальной нижняя сторона верхней ячейки.
 function pickBorderSide(early: BorderSideSpec | undefined, late: BorderSideSpec | undefined) {
     return early !== undefined ? early : late;
 }
 
+// Рисует линии сетки. Считает только видимую область (сколько колонок и строк
+// сейчас на экране), поэтому от общего размера таблицы скорость не зависит.
+// Работает в двух режимах:
+//   быстрый, когда getCellBorder не задан: сплошные линии, как в обычном glide;
+//   поклеточный, когда getCellBorder задан: линия дробится по ячейкам, у каждой
+//   можно включить или выключить свою сторону.
 // lines are effectively drawn on the top left edge of a cell.
 export function drawGridLines(
     ctx: CanvasRenderingContext2D,
@@ -343,6 +350,8 @@ export function drawGridLines(
     // Low-DPR hairline делает их стабильными при zoom ниже 100%, не меняя геометрию самих ячеек.
     ctx.lineWidth = getHairlineWidth(enableLowDprHairline);
 
+    // Объединённые ячейки (spans): вырезаем их нутро из области рисования, чтобы
+    // линии не попадали внутрь слитого блока. Остаётся только его внешний контур.
     if (spans !== undefined) {
         ctx.beginPath();
         ctx.save();
@@ -357,6 +366,10 @@ export function drawGridLines(
 
     const { minX, maxX, minY, maxY } = getMinMaxXY(drawRegions, width, height);
 
+    // Сюда складываем все отрезки линий, которые надо нарисовать в этом кадре.
+    // Рисуем их не по одному, а в самом конце: группируем по цвету и на каждый
+    // цвет делаем один общий проход кистью (см. groupBy внизу) - так быстрее и
+    // стыки не двоятся.
     const toDraw: { x1: number; y1: number; x2: number; y2: number; color: string }[] = [];
 
     ctx.beginPath();
@@ -364,6 +377,7 @@ export function drawGridLines(
     const bodyTop = Math.max(getTotalGroupHeaderHeight(groupHeaderHeight), minY);
     const bodyBottom = Math.min(height, maxY);
 
+    // Закреплённые снизу строки (freeze): их верхние линии рисуем всегда.
     let freezeY = height + 0.5;
     for (let i = rows - freezeTrailingRows; i < rows; i++) {
         const rh = getRowHeight(i);
@@ -372,8 +386,9 @@ export function drawGridLines(
     }
 
     if (getCellBorder === undefined) {
-        // Быстрый путь: сплошные линии, как раньше. Добавлены выключатель горизонталей
-        // по строке (horizontalBorder) и цвет вертикали у колонки (columnThemeOverride.borderColor).
+        // Быстрый путь: сплошные линии, как в обычном glide. Добавлены только две
+        // возможности: выключить горизонтали по строке (horizontalBorder) и задать
+        // цвет вертикали у колонки (через её тему).
         let x = 0.5;
         for (let index = 0; index < effectiveCols.length; index++) {
             const c = effectiveCols[index];
@@ -413,13 +428,13 @@ export function drawGridLines(
             }
         }
     } else {
-        // Путь с разбивкой по ячейкам: каждая линия делится на отрезки по клеткам,
-        // рамка каждой клетки считается отдельно. Приоритет: ячейка сильнее колонки
-        // и строки, те сильнее темы. Одинаковые по цвету отрезки красятся одним
-        // stroke (см. groupBy ниже), поэтому стыки не двоятся даже на полупрозрачном
-        // цвете. Путь включается только когда задан getCellBorder.
+        // Поклеточный путь: линия делится на кусочки по ячейкам, и для каждого
+        // кусочка отдельно решается, рисовать ли его и каким цветом. Приоритет:
+        // настройка ячейки сильнее колонки и строки, те сильнее темы. Включается
+        // только когда задан getCellBorder.
 
-        // Геометрия видимых колонок: левый/правый x, source-индекс, effective-индекс.
+        // Заранее считаем положение видимых колонок: левый и правый край по x и
+        // два индекса (source - в данных, effIndex - среди видимых на экране).
         const cols: { effIndex: number; source: number; xLeft: number; xRight: number }[] = [];
         {
             let x = 0.5;
@@ -432,7 +447,8 @@ export function drawGridLines(
             }
         }
 
-        // Геометрия видимых строк прокручиваемой области (без freeze-хвоста).
+        // Заранее считаем видимые строки прокручиваемой области (без закреплённого
+        // снизу хвоста): номер строки, её верх по y и высоту.
         const rowsGeom: { row: number; ty: number; rh: number }[] = [];
         {
             let y = totalHeaderHeight + 0.5;
@@ -445,7 +461,10 @@ export function drawGridLines(
             }
         }
 
-        // Вертикали: на правой границе каждой видимой колонки, отрезок на строку.
+        // Вертикальные линии. Внешний цикл по видимым колонкам, внутренний по
+        // видимым строкам, то есть проходов примерно «колонок на экране умножить
+        // на строк на экране» (обычно пара тысяч), а не по всей таблице. На правой
+        // границе каждой колонки рисуем отрезок для каждой строки.
         for (let k = 0; k < cols.length; k++) {
             const left = cols[k];
             const tx = left.xRight;
@@ -467,7 +486,8 @@ export function drawGridLines(
                 toDraw.push({ x1: tx, y1, x2: tx, y2, color: resolved.color });
             }
 
-            // Freeze-хвост рисуем колоночным дефолтом (пер-ячейка там не поддержана).
+            // У закреплённого снизу хвоста рисуем линию по настройке колонки
+            // (поклеточная настройка там не поддержана).
             if (columnDefaultVisible && freezeY < bodyBottom) {
                 toDraw.push({
                     x1: tx,
@@ -479,7 +499,9 @@ export function drawGridLines(
             }
         }
 
-        // Горизонтали: на верхней границе каждой строки, отрезок на колонку.
+        // Горизонтальные линии. Здесь наоборот: внешний цикл по видимым строкам,
+        // внутренний по видимым колонкам (тот же порядок величины проходов). На
+        // верхней границе каждой строки рисуем отрезок для каждой колонки.
         if (verticalOnly !== true) {
             for (const rg of rowsGeom) {
                 const ty = rg.ty;
@@ -505,6 +527,10 @@ export function drawGridLines(
         }
     }
 
+    // Все накопленные отрезки группируем по цвету и на каждый цвет делаем один
+    // проход кистью: задаём цвет, прокладываем все линии этого цвета и рисуем их
+    // разом. Так вместо сотен отдельных штрихов получается несколько (по числу
+    // цветов), и стыки не двоятся.
     const groups = groupBy(toDraw, line => line.color);
     for (const g of Object.keys(groups)) {
         ctx.strokeStyle = g;
@@ -516,6 +542,7 @@ export function drawGridLines(
         ctx.beginPath();
     }
 
+    // Снимаем вырез по объединённым ячейкам, который поставили в начале.
     if (spans !== undefined) {
         ctx.restore();
     }
